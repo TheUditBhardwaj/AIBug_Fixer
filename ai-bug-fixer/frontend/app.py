@@ -6,24 +6,8 @@ import streamlit as st
 import requests
 import time
 import os
-from dotenv import load_dotenv
 
-# ── Environment Loading ──────────────────────────────────────────
-# Works in both environments:
-#   Local dev  → loads from .env via dotenv
-#   Streamlit Cloud → loads from st.secrets (set in the dashboard)
-load_dotenv()  # no-op on Streamlit Cloud if no .env present
-
-
-def _get_secret(key: str, default: str = "") -> str:
-    """Try st.secrets first (Streamlit Cloud), fall back to os.getenv (local .env)."""
-    try:
-        return st.secrets[key]
-    except (KeyError, FileNotFoundError):
-        return os.getenv(key, default)
-
-
-API_BASE_URL = _get_secret("API_BASE_URL", "http://localhost:8000")
+API_BASE_URL = st.secrets.get("API_BASE_URL", "http://localhost:8000")
 
 st.set_page_config(
     page_title="AI Bug Fixer",
