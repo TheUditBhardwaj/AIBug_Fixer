@@ -20,43 +20,50 @@ from backend.services.bug_fixer import BugFixerService
 
 
 def print_analysis(result: dict):
-    """Print the analysis results in a simple, clean format."""
+    """Pretty print the analysis results."""
+    print("\n" + "=" * 70)
+    print("ANALYSIS RESULTS")
+    print("=" * 70)
+    
     # Print bugs
     bugs = result.get("bugs", [])
     if bugs:
-        print(f"\nBUGS FOUND: {len(bugs)}\n")
+        print(f"\n🐛 Found {len(bugs)} bug(s):\n")
         for i, bug in enumerate(bugs, 1):
-            severity = bug.get('severity', 'unknown').upper()
-            bug_type = bug.get('type', 'Unknown')
-            description = bug.get('description', 'N/A')
-            line_start = bug.get('line_start')
-            
-            # Format line number
-            location = ""
-            if line_start:
-                location = f" at line {line_start}"
-                line_end = bug.get('line_end')
-                if line_end and line_end != line_start:
-                    location = f" at lines {line_start}-{line_end}"
-            
-            # Print bug in single line format
-            print(f"{i}. [{severity}] {bug_type}")
-            print(f"   {description}{location}")
-            
-            # Add explanation if available
-            explanation = bug.get('simple_explanation', '')
-            if explanation and explanation != 'N/A':
-                print(f"   {explanation}")
+            print(f"{i}. [{bug.get('severity', 'unknown').upper()}] {bug.get('type', 'Unknown')}")
+            print(f"   Description: {bug.get('description', 'N/A')}")
+            if bug.get('line_start'):
+                print(f"   Location: Line {bug.get('line_start')}", end="")
+                if bug.get('line_end') and bug.get('line_end') != bug.get('line_start'):
+                    print(f" - {bug.get('line_end')}")
+                else:
+                    print()
+            print(f"   Explanation: {bug.get('simple_explanation', 'N/A')}")
             print()
     else:
-        print("\nNo bugs detected.\n")
+        print("\n✅ No bugs detected!\n")
+    
+    # Print explanation
+    explanation = result.get("explanation", "")
+    if explanation:
+        print("📝 Overall Explanation:")
+        print(f"   {explanation}\n")
+    
+    # Print suggestions
+    suggestions = result.get("suggestions", [])
+    if suggestions:
+        print(f"💡 Suggestions ({len(suggestions)}):")
+        for i, suggestion in enumerate(suggestions, 1):
+            print(f"   {i}. {suggestion}")
+        print()
     
     # Print fixed code
     fixed_code = result.get("fixed_code", "")
     if fixed_code:
-        print("FIXED CODE:")
+        print("🔧 Fixed Code:")
+        print("-" * 70)
         print(fixed_code)
-        print()
+        print("-" * 70)
     
     print()
 
@@ -66,14 +73,14 @@ def analyze_file(bug_fixer: BugFixerService, filepath: str, use_rag: bool = True
     path = Path(filepath)
     
     if not path.exists():
-        print(f"Error: File not found: {filepath}")
+        print(f"❌ Error: File not found: {filepath}")
         return
     
     if not path.is_file():
-        print(f"Error: Not a file: {filepath}")
+        print(f"❌ Error: Not a file: {filepath}")
         return
     
-    print(f"Analyzing: {filepath}")
+    print(f"🔍 Analyzing: {filepath}")
     
     try:
         with open(path, 'r', encoding='utf-8') as f:
@@ -83,9 +90,9 @@ def analyze_file(bug_fixer: BugFixerService, filepath: str, use_rag: bool = True
         print_analysis(result)
         
     except UnicodeDecodeError:
-        print(f"Error: File must be text-based")
+        print(f"❌ Error: File must be text-based")
     except Exception as e:
-        print(f"Error analyzing file: {str(e)}")
+        print(f"❌ Error analyzing file: {str(e)}")
         import traceback
         traceback.print_exc()
 
@@ -95,11 +102,11 @@ def analyze_directory(bug_fixer: BugFixerService, dirpath: str, extensions: list
     path = Path(dirpath)
     
     if not path.exists():
-        print(f"Error: Directory not found: {dirpath}")
+        print(f"❌ Error: Directory not found: {dirpath}")
         return
     
     if not path.is_dir():
-        print(f"Error: Not a directory: {dirpath}")
+        print(f"❌ Error: Not a directory: {dirpath}")
         return
     
     # Default extensions if not provided
@@ -115,13 +122,13 @@ def analyze_directory(bug_fixer: BugFixerService, dirpath: str, extensions: list
                     with open(file_path, 'r', encoding='utf-8') as f:
                         files[str(file_path.relative_to(path))] = f.read()
                 except Exception as e:
-                    print(f"Warning: Skipping {file_path}: {str(e)}")
+                    print(f"⚠️  Skipping {file_path}: {str(e)}")
     
     if not files:
-        print(f"Error: No code files found with extensions: {extensions}")
+        print(f"❌ No code files found with extensions: {extensions}")
         return
     
-    print(f"Analyzing {len(files)} file(s) in: {dirpath}")
+    print(f"🔍 Analyzing {len(files)} file(s) in: {dirpath}")
     
     try:
         result = bug_fixer.analyze_files_dict(files)
@@ -130,12 +137,12 @@ def analyze_directory(bug_fixer: BugFixerService, dirpath: str, extensions: list
         # Print fixed files
         fixed_files = result.get("fixed_code", {})
         if fixed_files and isinstance(fixed_files, dict):
-            print(f"\nFixed {len(fixed_files)} file(s):")
+            print(f"\n🔧 Fixed {len(fixed_files)} file(s)")
             for filename in fixed_files.keys():
-                print(f"  - {filename}")
+                print(f"   - {filename}")
         
     except Exception as e:
-        print(f"Error analyzing directory: {str(e)}")
+        print(f"❌ Error analyzing directory: {str(e)}")
         import traceback
         traceback.print_exc()
 
@@ -188,13 +195,13 @@ Examples:
     args = parser.parse_args()
     
     # Initialize service
-    print("Initializing AI Bug Fixer...")
+    print("🚀 Initializing AI Bug Fixer...")
     llm_api_key = os.getenv("LLM_API_KEY")
     llm_base_url = os.getenv("LLM_BASE_URL")
     llm_model = os.getenv("LLM_MODEL")
     
     if not llm_api_key:
-        print("Warning: LLM_API_KEY not set in environment")
+        print("⚠️  Warning: LLM_API_KEY not set in environment")
     
     bug_fixer = BugFixerService(
         api_key=llm_api_key,
