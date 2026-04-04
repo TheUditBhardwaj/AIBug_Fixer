@@ -8,9 +8,22 @@ import time
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# ── Environment Loading ──────────────────────────────────────────
+# Works in both environments:
+#   Local dev  → loads from .env via dotenv
+#   Streamlit Cloud → loads from st.secrets (set in the dashboard)
+load_dotenv()  # no-op on Streamlit Cloud if no .env present
 
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+
+def _get_secret(key: str, default: str = "") -> str:
+    """Try st.secrets first (Streamlit Cloud), fall back to os.getenv (local .env)."""
+    try:
+        return st.secrets[key]
+    except (KeyError, FileNotFoundError):
+        return os.getenv(key, default)
+
+
+API_BASE_URL = _get_secret("API_BASE_URL", "http://localhost:8000")
 
 st.set_page_config(
     page_title="AI Bug Fixer",
@@ -294,6 +307,18 @@ def analyze_github_repo(repo_url: str, branch: str = "main") -> dict:
     return call_api("/analyze-repo", {"repo_url": repo_url, "branch": branch})
 
 
+def ask_question(question: str, code: str, analysis_result: dict = None, filename: str = None) -> str:
+    """Ask a question about analyzed code."""
+    data = {
+        "question": question,
+        "code": code,
+        "filename": filename,
+        "analysis_result": analysis_result,
+    }
+    result = call_api("/ask-question", data)
+    return result.get("answer", "") if result else ""
+
+
 SEV_BORDER = {
     "low":      "#238636",
     "medium":   "#9e6a03",
@@ -430,13 +455,62 @@ def display_results(result: dict, original_code: str = "", code_lang: str = "pyt
                 """, unsafe_allow_html=True)
 
     # ── Explanation ──────────────────────────────────────────
-    if result.get("explanation"):
+    raw_explanation = result.get("explanation", "")
+    if raw_explanation:
+        # Sanitize: if explanation looks like a raw JSON dump, show a warning instead
+        stripped = raw_explanation.strip()
+        is_json_dump = (
+            (stripped.startswith("{") and "fixed_code" in stripped[:200])
+            or (stripped.startswith("[") and len(stripped) > 2000)
+            or stripped.count("\\n") > 30  # Escaped newlines = raw JSON string
+        )
+
         st.markdown("""
         <p style="font-size:0.75rem;color:#6e7681;text-transform:uppercase;letter-spacing:1px;
                   font-weight:600;margin:24px 0 12px 0;border-bottom:1px solid rgba(255,255,255,0.07);
                   padding-bottom:10px;">Analysis Summary</p>
         """, unsafe_allow_html=True)
-        st.markdown(result["explanation"])
+
+        if is_json_dump:
+            st.warning("⚠️ The AI returned an unstructured response. Try analyzing again for a cleaner result.")
+        else:
+            # Render paragraphs/lists cleanly
+            paragraphs = raw_explanation.split("\n\n")
+            rendered_blocks = []
+            for para in paragraphs:
+                lines = [l.strip() for l in para.split("\n") if l.strip()]
+                if not lines:
+                    continue
+                if all(l[0].isdigit() for l in lines if l):
+                    items = "".join(
+                        f'<li style="font-size:0.875rem;color:#8b949e;line-height:1.75;padding:3px 0;">'
+                        f'{l.lstrip("0123456789.) ")}</li>'
+                        for l in lines
+                    )
+                    rendered_blocks.append(f'<ol style="padding-left:1.3rem;margin:0;">{items}</ol>')
+                elif all(l[0] in "-*•" for l in lines if l):
+                    items = "".join(
+                        f'<li style="font-size:0.875rem;color:#8b949e;line-height:1.75;padding:3px 0;">'
+                        f'{l.lstrip("-*• ")}</li>'
+                        for l in lines
+                    )
+                    rendered_blocks.append(f'<ul style="padding-left:1.3rem;margin:0;">{items}</ul>')
+                else:
+                    rendered_blocks.append(
+                        f'<p style="font-size:0.875rem;color:#8b949e;line-height:1.8;margin:0;">'
+                        f'{" ".join(lines)}</p>'
+                    )
+
+            if rendered_blocks:
+                st.markdown(
+                    '<div style="display:flex;flex-direction:column;gap:12px;'
+                    'background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);'
+                    'border-radius:12px;padding:20px 24px;">'
+                    + "".join(rendered_blocks)
+                    + "</div>",
+                    unsafe_allow_html=True
+                )
+
 
     # ── Code diff ────────────────────────────────────────────
     fixed = result.get("fixed_code", "")
@@ -485,6 +559,79 @@ def display_results(result: dict, original_code: str = "", code_lang: str = "pyt
             """, unsafe_allow_html=True)
 
 
+def display_chat_ui(code: str, analysis_result: dict, chat_key: str = "default", filename: str = None):
+    """Display the Q&A chat interface."""
+    # Initialize chat history in session state
+    history_key = f"chat_history_{chat_key}"
+    if history_key not in st.session_state:
+        st.session_state[history_key] = []
+
+    file_label = filename or "your code"
+    st.markdown(f"""
+    <p style="font-size:0.75rem;color:#6e7681;text-transform:uppercase;letter-spacing:1px;
+              font-weight:600;margin:24px 0 12px 0;border-bottom:1px solid rgba(255,255,255,0.07);
+              padding-bottom:10px;">Ask Questions About <span style="color:#a5b4fc;font-family:'JetBrains Mono',monospace;">{file_label}</span></p>
+    """, unsafe_allow_html=True)
+
+    # Display chat history
+    for msg in st.session_state[history_key]:
+        if msg["role"] == "user":
+            st.markdown(f"""
+            <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+                <div style="background:rgba(79,70,229,0.15);border:1px solid rgba(79,70,229,0.3);
+                            border-radius:12px 12px 4px 12px;padding:12px 16px;max-width:80%;">
+                    <p style="font-size:0.85rem;color:#c9d1d9;margin:0;line-height:1.5;">{msg["content"]}</p>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div style="display:flex;justify-content:flex-start;margin-bottom:12px;">
+                <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);
+                            border-radius:12px 12px 12px 4px;padding:12px 16px;max-width:80%;">
+                    <p style="font-size:0.85rem;color:#8b949e;margin:0;line-height:1.6;">{msg["content"]}</p>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # Input form
+    with st.form(key=f"chat_form_{chat_key}", clear_on_submit=True):
+        col1, col2 = st.columns([5, 1])
+        with col1:
+            user_question = st.text_input(
+                "Question",
+                placeholder=f"Ask a question about {file_label}...",
+                label_visibility="collapsed"
+            )
+        with col2:
+            submit = st.form_submit_button("Ask", use_container_width=True)
+
+    if submit and user_question.strip():
+        # Add user message to history
+        st.session_state[history_key].append({"role": "user", "content": user_question})
+        
+        # Get AI response — pass filename so RAG knows which file we're discussing
+        with st.spinner("Thinking..."):
+            answer = ask_question(user_question, code, analysis_result, filename=filename)
+
+        
+        if answer:
+            st.session_state[history_key].append({"role": "assistant", "content": answer})
+        else:
+            st.session_state[history_key].append({
+                "role": "assistant",
+                "content": "Sorry, I couldn't generate an answer. Please try again."
+            })
+        
+        st.rerun()
+
+    # Clear chat button
+    if st.session_state[history_key]:
+        if st.button("Clear Chat", key=f"clear_chat_{chat_key}"):
+            st.session_state[history_key] = []
+            st.rerun()
+
+
 # ───────────────────────────────────────────────────────────────
 # SIDEBAR
 # ───────────────────────────────────────────────────────────────
@@ -507,7 +654,8 @@ with st.sidebar:
         if st.button("Clear", use_container_width=True):
             for k in ["analysis_result", "file_result", "repo_result",
                       "uploaded_filename", "uploaded_content", "repo_url",
-                      "code_input_snapshot", "code_lang"]:
+                      "code_input_snapshot", "code_lang",
+                      "chat_history_code", "chat_history_file", "chat_history_repo"]:
                 st.session_state.pop(k, None)
             st.rerun()
 
@@ -613,6 +761,7 @@ def main():
                     st.session_state["analysis_result"] = result
                     st.session_state["code_input_snapshot"] = code_input
                     st.session_state["code_lang"] = result.get("language", language.lower())
+                    st.session_state["code_filename"] = filename if filename else None
 
         if "analysis_result" in st.session_state:
             result = st.session_state["analysis_result"]
@@ -627,6 +776,8 @@ def main():
                              border-radius:4px;padding:3px 9px;">Detected: {lang}</span>
                 """, unsafe_allow_html=True)
                 st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
+            # Q&A Chat Interface (at top)
+            display_chat_ui(orig, result, chat_key="code", filename=st.session_state.get("code_filename") or filename or None)
             display_results(result, original_code=orig, code_lang=lang)
 
     # ── Tab 2: File Upload ────────────────────────────────────
@@ -678,6 +829,9 @@ def main():
             orig = st.session_state.get("uploaded_content", "")
             lang = result.get("language", "python")
             st.divider()
+            # Q&A Chat Interface (at top)
+            uploaded_fname = st.session_state.get("uploaded_filename")
+            display_chat_ui(orig, result, chat_key="file", filename=uploaded_fname)
             display_results(result, original_code=orig, code_lang=lang)
 
     # ── Tab 3: GitHub Repo ────────────────────────────────────
@@ -742,6 +896,9 @@ def main():
                                  color:#8b949e;">{repo_display}</span>
                 </div>
                 """, unsafe_allow_html=True)
+            # Q&A Chat Interface (at top)
+            repo_code = f"Repository: {repo_display}\n\nAnalysis results are displayed below."
+            display_chat_ui(repo_code, result, chat_key="repo", filename=repo_display)
             display_results(result)
 
 

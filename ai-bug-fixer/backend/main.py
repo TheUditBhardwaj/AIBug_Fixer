@@ -110,6 +110,22 @@ class HealthResponse(BaseModel):
     version: str
 
 
+class QuestionRequest(BaseModel):
+    """Request model for Q&A about code."""
+
+    question: str
+    code: str
+    filename: Optional[str] = None
+    analysis_result: Optional[Dict[str, Any]] = None
+
+
+class QuestionResponse(BaseModel):
+    """Response model for Q&A."""
+
+    answer: str
+    question: str
+
+
 # API Endpoints
 @app.get("/", response_model=HealthResponse)
 async def root():
@@ -332,6 +348,57 @@ async def analyze_file(file: UploadFile = File(...)):
 async def get_stats():
     """Get statistics about the loaded index."""
     return bug_fixer.retriever.get_stats()
+
+
+@app.post("/ask-question", response_model=QuestionResponse)
+async def ask_question(request: QuestionRequest):
+    """
+    Answer a question about analyzed code using RAG.
+
+    Args:
+        request: Question request with code and optional analysis result
+
+    Returns:
+        AI-generated answer to the question
+    """
+    if not request.question or not request.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    if not request.code or not request.code.strip():
+        raise HTTPException(status_code=400, detail="Code cannot be empty")
+
+    try:
+        loop = asyncio.get_event_loop()
+        
+        # Use the real filename for RAG indexing (falls back to a generic label)
+        index_filename = request.filename or "analyzed_code"
+        
+        # Index the code for RAG retrieval with the actual filename
+        await loop.run_in_executor(
+            executor,
+            bug_fixer.index_code,
+            request.code,
+            index_filename,
+        )
+
+        # Get answer using RAG, passing filename for better context
+        answer = await loop.run_in_executor(
+            executor,
+            bug_fixer.ask_question,
+            request.question,
+            request.code,
+            request.analysis_result,
+            index_filename,
+        )
+
+        return QuestionResponse(
+            answer=answer,
+            question=request.question,
+        )
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to answer question: {str(e)}")
 
 
 if __name__ == "__main__":

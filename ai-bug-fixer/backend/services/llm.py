@@ -246,3 +246,57 @@ Identify all bugs, especially those involving interactions between files."""
                 "fixed_code": files,
                 "suggestions": ["Could not parse structured response"],
             }
+
+    def answer_question(
+        self,
+        question: str,
+        code_context: str,
+        analysis_result: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        Answer a question about code using RAG context.
+
+        Args:
+            question: User's question about the code
+            code_context: Relevant code snippets retrieved via RAG
+            analysis_result: Previous bug analysis results (optional)
+
+        Returns:
+            Natural language answer to the question
+        """
+        system_prompt = """You are a helpful programming assistant answering questions about code.
+You have access to the relevant code context and any previous bug analysis.
+
+Guidelines:
+- Be concise but thorough
+- Reference specific line numbers when relevant
+- Explain concepts in simple terms
+- If you're not sure about something, say so
+- Focus on the specific question asked"""
+
+        user_prompt = f"""Question: {question}
+
+Relevant Code Context:
+{code_context}
+"""
+
+        if analysis_result:
+            bugs = analysis_result.get("bugs", [])
+            if bugs:
+                user_prompt += "\n\nPrevious Bug Analysis:\n"
+                for i, bug in enumerate(bugs, 1):
+                    user_prompt += f"{i}. [{bug.get('severity', 'unknown').upper()}] {bug.get('type', 'Unknown')}"
+                    if bug.get('line_start'):
+                        user_prompt += f" (line {bug.get('line_start')})"
+                    user_prompt += f": {bug.get('description', 'N/A')}\n"
+
+        user_prompt += "\nPlease answer the question based on the code context provided."
+
+        response = self.generate(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            temperature=0.3,
+            max_tokens=2048,
+        )
+
+        return response.strip()

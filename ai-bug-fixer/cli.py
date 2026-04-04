@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CLI interface for AI Bug Fixer
-Analyze code without running the web interface
+Analyze code and ask questions using RAG
 """
 
 import sys
@@ -21,7 +21,6 @@ from backend.services.bug_fixer import BugFixerService
 
 def print_analysis(result: dict):
     """Print the analysis results in a simple, clean format."""
-    # Print bugs
     bugs = result.get("bugs", [])
     if bugs:
         print(f"\nBUGS FOUND: {len(bugs)}\n")
@@ -31,7 +30,6 @@ def print_analysis(result: dict):
             description = bug.get('description', 'N/A')
             line_start = bug.get('line_start')
             
-            # Format line number
             location = ""
             if line_start:
                 location = f" at line {line_start}"
@@ -39,11 +37,9 @@ def print_analysis(result: dict):
                 if line_end and line_end != line_start:
                     location = f" at lines {line_start}-{line_end}"
             
-            # Print bug in single line format
             print(f"{i}. [{severity}] {bug_type}")
             print(f"   {description}{location}")
             
-            # Add explanation if available
             explanation = bug.get('simple_explanation', '')
             if explanation and explanation != 'N/A':
                 print(f"   {explanation}")
@@ -51,14 +47,71 @@ def print_analysis(result: dict):
     else:
         print("\nNo bugs detected.\n")
     
-    # Print fixed code
     fixed_code = result.get("fixed_code", "")
     if fixed_code:
         print("FIXED CODE:")
         print(fixed_code)
         print()
+
+
+def print_qa_help():
+    """Print help for Q&A mode."""
+    print("\nQ&A Mode Commands:")
+    print("  help  - Show this help message")
+    print("  exit  - Exit Q&A mode")
+    print("  quit  - Exit Q&A mode")
+    print("  clear - Clear the screen")
+    print("\nJust type your question about the code to get an answer.\n")
+
+
+def interactive_qa(bug_fixer: BugFixerService, code: str, analysis_result: dict):
+    """Run interactive Q&A mode."""
+    print("\n" + "-" * 50)
+    print("Entering Q&A mode. Type 'help' for commands, 'exit' to quit.")
+    print("-" * 50 + "\n")
     
-    print()
+    # Index the code for RAG
+    try:
+        chunks_indexed = bug_fixer.index_code(code)
+        if chunks_indexed > 0:
+            print(f"(Indexed {chunks_indexed} code chunks for context retrieval)\n")
+    except Exception as e:
+        print(f"(Warning: Could not index code for RAG: {e})\n")
+    
+    while True:
+        try:
+            question = input("You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n\nGoodbye!")
+            break
+        
+        if not question:
+            continue
+        
+        # Handle commands
+        if question.lower() in ['exit', 'quit']:
+            print("\nGoodbye!")
+            break
+        
+        if question.lower() == 'help':
+            print_qa_help()
+            continue
+        
+        if question.lower() == 'clear':
+            os.system('cls' if os.name == 'nt' else 'clear')
+            continue
+        
+        # Answer the question
+        try:
+            print("\nThinking...")
+            answer = bug_fixer.ask_question(
+                question=question,
+                code=code,
+                analysis_result=analysis_result,
+            )
+            print(f"\nAI: {answer}\n")
+        except Exception as e:
+            print(f"\nError: Could not get answer: {e}\n")
 
 
 def analyze_file(bug_fixer: BugFixerService, filepath: str, use_rag: bool = True):
@@ -82,6 +135,14 @@ def analyze_file(bug_fixer: BugFixerService, filepath: str, use_rag: bool = True
         result = bug_fixer.analyze_code(code, path.name, use_rag)
         print_analysis(result)
         
+        # Offer Q&A mode
+        try:
+            response = input("Would you like to ask questions about this code? (yes/no): ").strip().lower()
+            if response in ['yes', 'y']:
+                interactive_qa(bug_fixer, code, result)
+        except (EOFError, KeyboardInterrupt):
+            print("\n")
+        
     except UnicodeDecodeError:
         print(f"Error: File must be text-based")
     except Exception as e:
@@ -102,11 +163,9 @@ def analyze_directory(bug_fixer: BugFixerService, dirpath: str, extensions: list
         print(f"Error: Not a directory: {dirpath}")
         return
     
-    # Default extensions if not provided
     if extensions is None:
         extensions = ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.go', '.rs', '.rb', '.php']
     
-    # Find all matching files
     files = {}
     for ext in extensions:
         for file_path in path.rglob(f'*{ext}'):
@@ -127,12 +186,19 @@ def analyze_directory(bug_fixer: BugFixerService, dirpath: str, extensions: list
         result = bug_fixer.analyze_files_dict(files)
         print_analysis(result)
         
-        # Print fixed files
-        fixed_files = result.get("fixed_code", {})
-        if fixed_files and isinstance(fixed_files, dict):
-            print(f"\nFixed {len(fixed_files)} file(s):")
-            for filename in fixed_files.keys():
-                print(f"  - {filename}")
+        # Combine all code for Q&A
+        combined_code = "\n\n".join([
+            f"=== {fname} ===\n{content}" 
+            for fname, content in files.items()
+        ])
+        
+        # Offer Q&A mode
+        try:
+            response = input("Would you like to ask questions about this code? (yes/no): ").strip().lower()
+            if response in ['yes', 'y']:
+                interactive_qa(bug_fixer, combined_code, result)
+        except (EOFError, KeyboardInterrupt):
+            print("\n")
         
     except Exception as e:
         print(f"Error analyzing directory: {str(e)}")
@@ -143,7 +209,7 @@ def analyze_directory(bug_fixer: BugFixerService, dirpath: str, extensions: list
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="AI Bug Fixer - Analyze code for bugs without the web interface",
+        description="AI Bug Fixer - Analyze code for bugs and ask questions",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -211,5 +277,5 @@ Examples:
         analyze_directory(bug_fixer, args.path, args.extensions, use_rag)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

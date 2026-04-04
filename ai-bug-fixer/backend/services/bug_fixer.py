@@ -428,3 +428,87 @@ class BugFixerService:
             bug_type = bug.get("type", "unknown")
             summary[bug_type] = summary.get(bug_type, 0) + 1
         return summary
+
+    def ask_question(
+        self,
+        question: str,
+        code: str,
+        analysis_result: Optional[Dict[str, Any]] = None,
+        filename: Optional[str] = None,
+        max_context_tokens: int = 2000,
+    ) -> str:
+        """
+        Answer a question about the analyzed code using RAG.
+
+        Args:
+            question: User's question about the code
+            code: The code being analyzed
+            analysis_result: Previous bug analysis results
+            filename: The actual filename to include in context
+            max_context_tokens: Maximum tokens for context retrieval
+
+        Returns:
+            Natural language answer to the question
+        """
+        context_parts = []
+
+        # Always include the code with an accurate filename header
+        file_label = filename or "analyzed_code"
+        context_parts.append(f"=== File: {file_label} ===\n{code}\n")
+
+        # Try to get additional context from RAG if index has documents
+        if self.retriever.get_stats()["total_documents"] > 0:
+            try:
+                query_embedding = self.embedding.embed_text(question)
+                rag_context = self.retriever.get_context_for_query(
+                    query_embedding, max_tokens=max_context_tokens
+                )
+                if rag_context:
+                    context_parts.append(f"=== Related Code Context ===\n{rag_context}\n")
+            except Exception:
+                pass
+
+        combined_context = "\n".join(context_parts)
+
+        return self.llm.answer_question(
+            question=question,
+            code_context=combined_context,
+            analysis_result=analysis_result,
+        )
+
+
+    def index_code(self, code: str, filename: Optional[str] = None) -> int:
+        """
+        Index code for RAG retrieval.
+
+        Args:
+            code: Source code to index
+            filename: Optional filename for metadata
+
+        Returns:
+            Number of chunks indexed
+        """
+        # Split code into chunks
+        chunks = self._chunk_code(code, chunk_size=500, overlap=50)
+        
+        if not chunks:
+            return 0
+
+        # Create metadata for each chunk
+        metadatas = []
+        for chunk in chunks:
+            metadatas.append({
+                "filepath": filename or "unknown",
+                "start_line": chunk.get("start_line", 0),
+                "end_line": chunk.get("end_line", 0),
+                "type": "code_chunk",
+            })
+
+        # Get content strings
+        contents = [chunk["content"] for chunk in chunks]
+
+        # Embed and add to index
+        embeddings = self.embedding.embed_batch(contents)
+        self.retriever.add_documents(embeddings, contents, metadatas)
+
+        return len(chunks)
