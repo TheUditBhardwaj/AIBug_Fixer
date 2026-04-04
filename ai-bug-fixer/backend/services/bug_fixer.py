@@ -359,10 +359,16 @@ class BugFixerService:
 
             # Analyze files in parallel to reduce total response time
             with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = [executor.submit(analyze_single_file, f, c) for f, c in files_to_analyze]
-                for future in futures:
+                # Map futures to filenames so we know which one failed
+                future_to_filename = {
+                    executor.submit(analyze_single_file, f, c): f 
+                    for f, c in files_to_analyze
+                }
+                
+                for future in future_to_filename:
+                    filename = future_to_filename[future]
                     try:
-                        filename, analysis = future.result()
+                        _, analysis = future.result()
                         
                         # Add metadata to bugs
                         for bug in analysis.get("bugs", []):
@@ -379,9 +385,6 @@ class BugFixerService:
                             all_suggestions.extend(analysis["suggestions"])
                     except Exception as e:
                         print(f"Error analyzing {filename}: {e}")
-
-            # Deduplicate suggestions
-            unique_suggestions = list(set(all_suggestions))[:10]
 
             # Deduplicate suggestions
             unique_suggestions = list(set(all_suggestions))[:10]
