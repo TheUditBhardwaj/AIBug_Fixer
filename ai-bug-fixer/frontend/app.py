@@ -6,234 +6,115 @@ import streamlit as st
 import requests
 import time
 import os
+from dotenv import load_dotenv
 
-API_BASE_URL = st.secrets.get("API_BASE_URL", "http://localhost:8000")
+load_dotenv()
+
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 st.set_page_config(
     page_title="AI Bug Fixer",
     page_icon="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬡</text></svg>",
     layout="wide",
-    initial_sidebar_state="collapsed",
 )
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
-
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-html, body, [data-testid="stAppViewContainer"] {
-    background: #06070d !important;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    color: #c9d1d9;
-}
-
-[data-testid="stAppViewContainer"]::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background:
-        radial-gradient(ellipse 70% 50% at 15% 10%, rgba(79,70,229,0.09) 0%, transparent 60%),
-        radial-gradient(ellipse 50% 40% at 85% 85%, rgba(124,58,237,0.07) 0%, transparent 55%);
-    pointer-events: none;
-    z-index: 0;
-}
-[data-testid="stMain"] { position: relative; z-index: 1; }
-
-#MainMenu { visibility: visible !important; }
-footer { display: none !important; }
-[data-testid="stDecoration"] { display: none !important; }
-
-/* ── Sidebar ── */
-[data-testid="stSidebar"] {
-    background: rgba(10,11,18,0.97) !important;
-    border-right: 1px solid rgba(255,255,255,0.07) !important;
-}
-[data-testid="stSidebar"] * { color: #8b949e !important; font-size: 0.85rem !important; }
-[data-testid="stSidebar"] h3 { color: #c9d1d9 !important; font-size: 0.9rem !important; font-weight: 600 !important; }
-
-/* ── Primary button ── */
-.stButton > button[kind="primary"] {
-    background: #4f46e5 !important;
-    color: #fff !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-family: 'Inter', sans-serif !important;
-    font-weight: 600 !important;
-    font-size: 0.875rem !important;
-    padding: 0.6rem 1.4rem !important;
-    letter-spacing: 0.2px !important;
-    transition: background 0.2s, box-shadow 0.2s, transform 0.15s !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 0 rgba(79,70,229,0) !important;
-}
-.stButton > button[kind="primary"]:hover {
-    background: #4338ca !important;
-    box-shadow: 0 1px 6px rgba(0,0,0,0.5), 0 0 16px rgba(79,70,229,0.25) !important;
-    transform: translateY(-1px) !important;
-}
-.stButton > button[kind="primary"]:active { transform: translateY(0) !important; }
-
-/* ── Secondary button ── */
-.stButton > button[kind="secondary"],
-.stButton > button:not([kind]) {
-    background: rgba(255,255,255,0.04) !important;
-    color: #8b949e !important;
-    border: 1px solid rgba(255,255,255,0.10) !important;
-    border-radius: 8px !important;
-    font-family: 'Inter', sans-serif !important;
-    font-size: 0.85rem !important;
-    transition: all 0.15s !important;
-}
-.stButton > button[kind="secondary"]:hover,
-.stButton > button:not([kind]):hover {
-    background: rgba(255,255,255,0.08) !important;
-    color: #c9d1d9 !important;
-    border-color: rgba(255,255,255,0.16) !important;
-}
-
-/* ── Inputs ── */
+/* ── Inputs & Textareas ── */
 .stTextInput > div > div > input,
-.stTextArea > div > textarea {
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid rgba(255,255,255,0.10) !important;
+.stTextArea > div > textarea,
+.stNumberInput > div > div > input {
+    border: 1.5px solid #c7d2fe !important;
     border-radius: 8px !important;
-    color: #c9d1d9 !important;
-    font-family: 'Inter', sans-serif !important;
-    font-size: 0.875rem !important;
-    transition: border-color 0.15s, box-shadow 0.15s !important;
-}
-.stTextArea > div > textarea {
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 0.82rem !important;
-    line-height: 1.6 !important;
-}
-.stTextInput > div > div > input:focus,
-.stTextArea > div > textarea:focus {
-    border-color: rgba(79,70,229,0.6) !important;
-    box-shadow: 0 0 0 3px rgba(79,70,229,0.12) !important;
     outline: none !important;
 }
-.stTextInput > div > div > input::placeholder,
-.stTextArea > div > textarea::placeholder { color: #3d444d !important; }
-
-/* ── Labels ── */
-.stTextInput label, .stTextArea label,
-.stSelectbox label, .stFileUploader label,
-.stMultiSelect label {
-    color: #6e7681 !important;
-    font-size: 0.75rem !important;
-    font-weight: 500 !important;
-    letter-spacing: 0.6px !important;
-    text-transform: uppercase !important;
+.stTextInput > div > div > input:focus,
+.stTextArea > div > textarea:focus,
+.stNumberInput > div > div > input:focus {
+    border-color: #4f46e5 !important;
+    box-shadow: 0 0 0 3px rgba(79,70,229,0.12) !important;
 }
 
 /* ── Selectbox ── */
-.stSelectbox > div > div > div {
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid rgba(255,255,255,0.10) !important;
+.stSelectbox > div > div,
+[data-baseweb="select"] > div {
+    border: 1.5px solid #c7d2fe !important;
     border-radius: 8px !important;
-    color: #c9d1d9 !important;
 }
 
 /* ── Multiselect ── */
 [data-testid="stMultiSelect"] > div > div {
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid rgba(255,255,255,0.10) !important;
+    border: 1.5px solid #c7d2fe !important;
     border-radius: 8px !important;
 }
 
 /* ── Tabs ── */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 2px;
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 10px;
-    padding: 4px;
+    border: 1.5px solid #c7d2fe !important;
+    border-radius: 10px !important;
+    padding: 4px !important;
 }
 .stTabs [data-baseweb="tab"] {
     border-radius: 7px !important;
-    color: #6e7681 !important;
-    font-family: 'Inter', sans-serif !important;
-    font-weight: 500 !important;
-    font-size: 0.85rem !important;
-    transition: all 0.15s !important;
-    padding: 0.45rem 1.1rem !important;
-}
-.stTabs [aria-selected="true"] {
-    background: rgba(79,70,229,0.18) !important;
-    color: #a5b4fc !important;
 }
 
-/* ── Expander ── */
-.streamlit-expanderHeader {
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
-    border-radius: 8px !important;
-    color: #c9d1d9 !important;
-    font-family: 'Inter', sans-serif !important;
-    font-size: 0.875rem !important;
-}
-.streamlit-expanderContent {
-    background: rgba(255,255,255,0.015) !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
-    border-top: none !important;
-    border-bottom-left-radius: 8px !important;
-    border-bottom-right-radius: 8px !important;
-}
-
-/* ── Alerts ── */
-[data-testid="stAlert"] {
-    border-radius: 8px !important;
-    border: none !important;
-    font-family: 'Inter', sans-serif !important;
-    font-size: 0.875rem !important;
-}
-
-/* ── Progress ── */
-.stProgress > div > div {
-    background: #4f46e5 !important;
-    border-radius: 999px !important;
-}
-.stProgress > div {
-    background: rgba(255,255,255,0.06) !important;
-    border-radius: 999px !important;
-}
-
-/* ── File uploader ── */
-[data-testid="stFileUploader"] > div {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px dashed rgba(255,255,255,0.14) !important;
+/* ── Expanders ── */
+[data-testid="stExpander"] {
+    border: 1.5px solid #c7d2fe !important;
     border-radius: 10px !important;
-    transition: border-color 0.2s !important;
-}
-[data-testid="stFileUploader"] > div:hover {
-    border-color: rgba(79,70,229,0.45) !important;
+    overflow: hidden !important;
 }
 
 /* ── Code blocks ── */
 .stCode, pre {
+    border: 1.5px solid #c7d2fe !important;
     border-radius: 8px !important;
-    border: 1px solid rgba(255,255,255,0.07) !important;
+}
+
+/* ── File uploader ── */
+[data-testid="stFileUploader"] > div {
+    border: 2px dashed #a5b4fc !important;
+    border-radius: 10px !important;
 }
 
 /* ── Metrics ── */
-[data-testid="stMetricValue"] { color: #c9d1d9 !important; font-weight: 700 !important; }
-[data-testid="stMetricLabel"] { color: #6e7681 !important; }
+[data-testid="stMetric"] {
+    border: 1.5px solid #c7d2fe !important;
+    border-radius: 10px !important;
+    padding: 12px 16px !important;
+}
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+/* ── Alerts ── */
+[data-testid="stAlert"] {
+    border: 1.5px solid #c7d2fe !important;
+    border-radius: 8px !important;
+}
+
+/* ── Buttons ── */
+.stButton > button {
+    border: 1.5px solid #c7d2fe !important;
+    border-radius: 8px !important;
+}
+.stButton > button[kind="primary"] {
+    border-color: #4f46e5 !important;
+}
+
+/* ── Form ── */
+[data-testid="stForm"] {
+    border: 1.5px solid #c7d2fe !important;
+    border-radius: 10px !important;
+    padding: 16px !important;
+}
+
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {
+    border-right: 1.5px solid #c7d2fe !important;
+}
 
 /* ── Divider ── */
-hr { border-color: rgba(255,255,255,0.07) !important; margin: 1.5rem 0 !important; }
-
-/* ── Spinner ── */
-[data-testid="stSpinner"] > div { border-top-color: #4f46e5 !important; }
-
-/* ── Caption ── */
-.stCaption, caption { color: #6e7681 !important; font-size: 0.78rem !important; }
+hr {
+    border-color: #c7d2fe !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -310,10 +191,10 @@ SEV_BORDER = {
     "critical": "#b91c1c",
 }
 SEV_CHIP = {
-    "low":      "background:#0d2d1f;color:#3fb950;border:1px solid #238636;",
-    "medium":   "background:#2d1f0d;color:#d29922;border:1px solid #9e6a03;",
-    "high":     "background:#2d0d0d;color:#f85149;border:1px solid #da3633;",
-    "critical": "background:#3b0000;color:#ff7b72;border:1px solid #b91c1c;",
+    "low":      "background:#dcfce7;color:#166534;border:1px solid #86efac;",
+    "medium":   "background:#fef9c3;color:#854d0e;border:1px solid #fde047;",
+    "high":     "background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;",
+    "critical": "background:#fecdd3;color:#881337;border:1px solid #fb7185;",
 }
 SEV_LABEL = {
     "low": "LOW", "medium": "MEDIUM", "high": "HIGH", "critical": "CRITICAL"
@@ -335,7 +216,7 @@ def _badge(text: str, style: str) -> str:
 def _mono_tag(text: str) -> str:
     return (
         f'<span style="font-family:\'JetBrains Mono\',monospace;font-size:0.75rem;'
-        f'color:#8b949e;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);'
+        f'color:#4b5563;background:#f3f4f6;border:1px solid #d1d5db;'
         f'border-radius:4px;padding:2px 7px;">{text}</span>'
     )
 
@@ -351,17 +232,17 @@ def display_results(result: dict, original_code: str = "", code_lang: str = "pyt
     # ── Summary cards ─────────────────────────────────────────
     if not bugs:
         st.markdown("""
-        <div style="background:#0d2d1f;border:1px solid #238636;border-radius:10px;
+        <div style="background:#dcfce7;border:1px solid #86efac;border-radius:10px;
                     padding:20px 24px;display:flex;align-items:center;gap:16px;margin-bottom:24px;">
-            <div style="width:36px;height:36px;background:#238636;border-radius:50%;
+            <div style="width:36px;height:36px;background:#16a34a;border-radius:50%;
                         display:flex;align-items:center;justify-content:center;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
                     <polyline points="20 6 9 17 4 12"/>
                 </svg>
             </div>
             <div>
-                <p style="color:#3fb950;font-weight:600;font-size:0.95rem;margin:0 0 3px 0;">No Issues Detected</p>
-                <p style="color:#6e7681;font-size:0.82rem;margin:0;">AI analysis found no bugs in the submitted code.</p>
+                <p style="color:#166534;font-weight:600;font-size:0.95rem;margin:0 0 3px 0;">No Issues Detected</p>
+                <p style="color:#4b7a56;font-size:0.82rem;margin:0;">AI analysis found no bugs in the submitted code.</p>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -369,29 +250,29 @@ def display_results(result: dict, original_code: str = "", code_lang: str = "pyt
         total = len(bugs)
         st.markdown(f"""
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px;">
-            <div style="background:#3b0000;border:1px solid #b91c1c;border-radius:10px;
+            <div style="background:#fecdd3;border:1px solid #fb7185;border-radius:10px;
                         padding:16px;text-align:center;">
-                <p style="font-size:2rem;font-weight:800;color:#ff7b72;margin:0 0 4px 0;">{counts['critical']}</p>
-                <p style="font-size:0.7rem;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin:0;font-weight:600;">Critical</p>
+                <p style="font-size:2rem;font-weight:800;color:#881337;margin:0 0 4px 0;">{counts['critical']}</p>
+                <p style="font-size:0.7rem;color:#9f1239;text-transform:uppercase;letter-spacing:1px;margin:0;font-weight:600;">Critical</p>
             </div>
-            <div style="background:#2d0d0d;border:1px solid #da3633;border-radius:10px;
+            <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;
                         padding:16px;text-align:center;">
-                <p style="font-size:2rem;font-weight:800;color:#f85149;margin:0 0 4px 0;">{counts['high']}</p>
-                <p style="font-size:0.7rem;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin:0;font-weight:600;">High</p>
+                <p style="font-size:2rem;font-weight:800;color:#991b1b;margin:0 0 4px 0;">{counts['high']}</p>
+                <p style="font-size:0.7rem;color:#b91c1c;text-transform:uppercase;letter-spacing:1px;margin:0;font-weight:600;">High</p>
             </div>
-            <div style="background:#2d1f0d;border:1px solid #9e6a03;border-radius:10px;
+            <div style="background:#fef9c3;border:1px solid #fde047;border-radius:10px;
                         padding:16px;text-align:center;">
-                <p style="font-size:2rem;font-weight:800;color:#d29922;margin:0 0 4px 0;">{counts['medium']}</p>
-                <p style="font-size:0.7rem;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin:0;font-weight:600;">Medium</p>
+                <p style="font-size:2rem;font-weight:800;color:#854d0e;margin:0 0 4px 0;">{counts['medium']}</p>
+                <p style="font-size:0.7rem;color:#92400e;text-transform:uppercase;letter-spacing:1px;margin:0;font-weight:600;">Medium</p>
             </div>
-            <div style="background:#0d2d1f;border:1px solid #238636;border-radius:10px;
+            <div style="background:#dcfce7;border:1px solid #86efac;border-radius:10px;
                         padding:16px;text-align:center;">
-                <p style="font-size:2rem;font-weight:800;color:#3fb950;margin:0 0 4px 0;">{counts['low']}</p>
-                <p style="font-size:0.7rem;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin:0;font-weight:600;">Low</p>
+                <p style="font-size:2rem;font-weight:800;color:#166534;margin:0 0 4px 0;">{counts['low']}</p>
+                <p style="font-size:0.7rem;color:#15803d;text-transform:uppercase;letter-spacing:1px;margin:0;font-weight:600;">Low</p>
             </div>
         </div>
-        <p style="font-size:0.75rem;color:#6e7681;text-transform:uppercase;letter-spacing:1px;
-                  font-weight:600;margin:0 0 14px 0;border-bottom:1px solid rgba(255,255,255,0.07);
+        <p style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:1px;
+                  font-weight:600;margin:0 0 14px 0;border-bottom:1px solid #e5e7eb;
                   padding-bottom:10px;">{total} issue{'s' if total != 1 else ''} found</p>
         """, unsafe_allow_html=True)
 
@@ -414,12 +295,12 @@ def display_results(result: dict, original_code: str = "", code_lang: str = "pyt
 
             severity_badge = _badge(sev_label, chip_sty)
             type_badge     = _badge(type_label,
-                "background:rgba(255,255,255,0.06);color:#8b949e;border:1px solid rgba(255,255,255,0.10);")
+                "background:#f3f4f6;color:#374151;border:1px solid #d1d5db;")
 
             with st.expander(f"#{i}  —  {type_label}  /  {sev_label}", expanded=(sev in ["high", "critical"])):
                 st.markdown(f"""
-                <div style="background:rgba(255,255,255,0.025);
-                            border:1px solid rgba(255,255,255,0.07);
+                <div style="background:#ffffff;
+                            border:1px solid #e5e7eb;
                             border-left:3px solid {border_col};
                             border-radius:8px;padding:18px 20px;">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
@@ -428,11 +309,11 @@ def display_results(result: dict, original_code: str = "", code_lang: str = "pyt
                         {fname_tag}
                         {line_tag}
                     </div>
-                    <p style="font-size:0.875rem;color:#c9d1d9;line-height:1.7;margin:0 0 12px 0;">
+                    <p style="font-size:0.875rem;color:#1f2937;line-height:1.7;margin:0 0 12px 0;">
                         {bug.get('description', 'No description available.')}
                     </p>
-                    <p style="font-size:0.82rem;color:#6e7681;line-height:1.6;margin:0;
-                              border-top:1px solid rgba(255,255,255,0.06);padding-top:10px;">
+                    <p style="font-size:0.82rem;color:#4b5563;line-height:1.6;margin:0;
+                              border-top:1px solid #f3f4f6;padding-top:10px;">
                         {bug.get('simple_explanation', '')}
                     </p>
                 </div>
@@ -450,8 +331,8 @@ def display_results(result: dict, original_code: str = "", code_lang: str = "pyt
         )
 
         st.markdown("""
-        <p style="font-size:0.75rem;color:#6e7681;text-transform:uppercase;letter-spacing:1px;
-                  font-weight:600;margin:24px 0 12px 0;border-bottom:1px solid rgba(255,255,255,0.07);
+        <p style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:1px;
+                  font-weight:600;margin:24px 0 12px 0;border-bottom:1px solid #e5e7eb;
                   padding-bottom:10px;">Analysis Summary</p>
         """, unsafe_allow_html=True)
 
@@ -467,28 +348,28 @@ def display_results(result: dict, original_code: str = "", code_lang: str = "pyt
                     continue
                 if all(l[0].isdigit() for l in lines if l):
                     items = "".join(
-                        f'<li style="font-size:0.875rem;color:#8b949e;line-height:1.75;padding:3px 0;">'
+                        f'<li style="font-size:0.875rem;color:#374151;line-height:1.75;padding:3px 0;">'
                         f'{l.lstrip("0123456789.) ")}</li>'
                         for l in lines
                     )
                     rendered_blocks.append(f'<ol style="padding-left:1.3rem;margin:0;">{items}</ol>')
                 elif all(l[0] in "-*•" for l in lines if l):
                     items = "".join(
-                        f'<li style="font-size:0.875rem;color:#8b949e;line-height:1.75;padding:3px 0;">'
+                        f'<li style="font-size:0.875rem;color:#374151;line-height:1.75;padding:3px 0;">'
                         f'{l.lstrip("-*• ")}</li>'
                         for l in lines
                     )
                     rendered_blocks.append(f'<ul style="padding-left:1.3rem;margin:0;">{items}</ul>')
                 else:
                     rendered_blocks.append(
-                        f'<p style="font-size:0.875rem;color:#8b949e;line-height:1.8;margin:0;">'
+                        f'<p style="font-size:0.875rem;color:#374151;line-height:1.8;margin:0;">'
                         f'{" ".join(lines)}</p>'
                     )
 
             if rendered_blocks:
                 st.markdown(
                     '<div style="display:flex;flex-direction:column;gap:12px;'
-                    'background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);'
+                    'background:#ffffff;border:1px solid #e5e7eb;'
                     'border-radius:12px;padding:20px 24px;">'
                     + "".join(rendered_blocks)
                     + "</div>",
@@ -500,8 +381,8 @@ def display_results(result: dict, original_code: str = "", code_lang: str = "pyt
     fixed = result.get("fixed_code", "")
     if fixed and isinstance(fixed, str) and original_code:
         st.markdown("""
-        <p style="font-size:0.75rem;color:#6e7681;text-transform:uppercase;letter-spacing:1px;
-                  font-weight:600;margin:24px 0 12px 0;border-bottom:1px solid rgba(255,255,255,0.07);
+        <p style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:1px;
+                  font-weight:600;margin:24px 0 12px 0;border-bottom:1px solid #e5e7eb;
                   padding-bottom:10px;">Code Comparison</p>
         """, unsafe_allow_html=True)
         c1, c2 = st.columns(2)
@@ -516,8 +397,8 @@ def display_results(result: dict, original_code: str = "", code_lang: str = "pyt
     fixed_files = result.get("fixed_code", {})
     if isinstance(fixed_files, dict) and fixed_files:
         st.markdown("""
-        <p style="font-size:0.75rem;color:#6e7681;text-transform:uppercase;letter-spacing:1px;
-                  font-weight:600;margin:24px 0 12px 0;border-bottom:1px solid rgba(255,255,255,0.07);
+        <p style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:1px;
+                  font-weight:600;margin:24px 0 12px 0;border-bottom:1px solid #e5e7eb;
                   padding-bottom:10px;">Fixed Files</p>
         """, unsafe_allow_html=True)
         sel = st.selectbox("Select file", list(fixed_files.keys()))
@@ -528,17 +409,17 @@ def display_results(result: dict, original_code: str = "", code_lang: str = "pyt
     suggestions = result.get("suggestions", [])
     if suggestions:
         st.markdown("""
-        <p style="font-size:0.75rem;color:#6e7681;text-transform:uppercase;letter-spacing:1px;
-                  font-weight:600;margin:24px 0 12px 0;border-bottom:1px solid rgba(255,255,255,0.07);
+        <p style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:1px;
+                  font-weight:600;margin:24px 0 12px 0;border-bottom:1px solid #e5e7eb;
                   padding-bottom:10px;">Recommendations</p>
         """, unsafe_allow_html=True)
         for s in suggestions:
             st.markdown(f"""
             <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;
-                        background:rgba(79,70,229,0.06);border:1px solid rgba(79,70,229,0.15);
+                        background:#eef0f8;border:1px solid #c7d2fe;
                         border-radius:7px;margin-bottom:7px;">
                 <span style="color:#4f46e5;font-weight:700;flex-shrink:0;margin-top:1px;font-size:0.85rem;">—</span>
-                <span style="font-size:0.85rem;color:#8b949e;line-height:1.55;">{s}</span>
+                <span style="font-size:0.85rem;color:#1e1b4b;line-height:1.55;">{s}</span>
             </div>
             """, unsafe_allow_html=True)
 
@@ -552,9 +433,9 @@ def display_chat_ui(code: str, analysis_result: dict, chat_key: str = "default",
 
     file_label = filename or "your code"
     st.markdown(f"""
-    <p style="font-size:0.75rem;color:#6e7681;text-transform:uppercase;letter-spacing:1px;
-              font-weight:600;margin:24px 0 12px 0;border-bottom:1px solid rgba(255,255,255,0.07);
-              padding-bottom:10px;">Ask Questions About <span style="color:#a5b4fc;font-family:'JetBrains Mono',monospace;">{file_label}</span></p>
+    <p style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:1px;
+              font-weight:600;margin:24px 0 12px 0;border-bottom:1px solid #e5e7eb;
+              padding-bottom:10px;">Ask Questions About <span style="color:#4f46e5;font-family:'JetBrains Mono',monospace;">{file_label}</span></p>
     """, unsafe_allow_html=True)
 
     # Display chat history
@@ -562,18 +443,18 @@ def display_chat_ui(code: str, analysis_result: dict, chat_key: str = "default",
         if msg["role"] == "user":
             st.markdown(f"""
             <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
-                <div style="background:rgba(79,70,229,0.15);border:1px solid rgba(79,70,229,0.3);
+                <div style="background:#e0e7ff;border:1px solid #c7d2fe;
                             border-radius:12px 12px 4px 12px;padding:12px 16px;max-width:80%;">
-                    <p style="font-size:0.85rem;color:#c9d1d9;margin:0;line-height:1.5;">{msg["content"]}</p>
+                    <p style="font-size:0.85rem;color:#1e1b4b;margin:0;line-height:1.5;">{msg["content"]}</p>
                 </div>
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown(f"""
             <div style="display:flex;justify-content:flex-start;margin-bottom:12px;">
-                <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);
+                <div style="background:#f9fafb;border:1px solid #e5e7eb;
                             border-radius:12px 12px 12px 4px;padding:12px 16px;max-width:80%;">
-                    <p style="font-size:0.85rem;color:#8b949e;margin:0;line-height:1.6;">{msg["content"]}</p>
+                    <p style="font-size:0.85rem;color:#374151;margin:0;line-height:1.6;">{msg["content"]}</p>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -668,38 +549,38 @@ with st.sidebar:
 def main():
     # ── Header ────────────────────────────────────────────────
     st.markdown("""
-    <div style="padding:52px 0 36px 0;border-bottom:1px solid rgba(255,255,255,0.07);margin-bottom:36px;">
-        <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(79,70,229,0.12);
-                    border:1px solid rgba(79,70,229,0.25);border-radius:4px;padding:3px 12px;
+    <div style="padding:52px 0 36px 0;border-bottom:1px solid #e5e7eb;margin-bottom:36px;">
+        <div style="display:inline-flex;align-items:center;gap:8px;background:#e0e7ff;
+                    border:1px solid #c7d2fe;border-radius:4px;padding:3px 12px;
                     margin-bottom:18px;">
             <div style="width:6px;height:6px;border-radius:50%;background:#4f46e5;"></div>
-            <span style="font-size:0.72rem;font-weight:600;color:#a5b4fc;letter-spacing:1px;text-transform:uppercase;">
+            <span style="font-size:0.72rem;font-weight:600;color:#4338ca;letter-spacing:1px;text-transform:uppercase;">
                 AI-Powered
             </span>
         </div>
         <h1 style="font-size:clamp(2rem,4vw,3rem);font-weight:800;letter-spacing:-0.5px;
-                   color:#e6edf3;line-height:1.2;margin:0 0 14px 0;">
+                   color:#1a1d2e;line-height:1.2;margin:0 0 14px 0;">
             AI Bug Fixer
         </h1>
-        <p style="font-size:1rem;color:#6e7681;line-height:1.65;max-width:560px;margin:0 0 28px 0;">
+        <p style="font-size:1rem;color:#4b5563;line-height:1.65;max-width:560px;margin:0 0 28px 0;">
             Detect bugs, vulnerabilities and performance issues. Get structured AI-generated
             fixes with clear, actionable explanations.
         </p>
         <div style="display:flex;gap:16px;flex-wrap:wrap;">
-            <div style="display:flex;align-items:center;gap:7px;font-size:0.8rem;color:#6e7681;">
-                <div style="width:7px;height:7px;border-radius:50%;background:#238636;"></div>
+            <div style="display:flex;align-items:center;gap:7px;font-size:0.8rem;color:#4b5563;">
+                <div style="width:7px;height:7px;border-radius:50%;background:#16a34a;"></div>
                 Semantic code indexing
             </div>
-            <div style="display:flex;align-items:center;gap:7px;font-size:0.8rem;color:#6e7681;">
-                <div style="width:7px;height:7px;border-radius:50%;background:#238636;"></div>
+            <div style="display:flex;align-items:center;gap:7px;font-size:0.8rem;color:#4b5563;">
+                <div style="width:7px;height:7px;border-radius:50%;background:#16a34a;"></div>
                 Cross-file analysis
             </div>
-            <div style="display:flex;align-items:center;gap:7px;font-size:0.8rem;color:#6e7681;">
-                <div style="width:7px;height:7px;border-radius:50%;background:#238636;"></div>
+            <div style="display:flex;align-items:center;gap:7px;font-size:0.8rem;color:#4b5563;">
+                <div style="width:7px;height:7px;border-radius:50%;background:#16a34a;"></div>
                 GitHub repository support
             </div>
-            <div style="display:flex;align-items:center;gap:7px;font-size:0.8rem;color:#6e7681;">
-                <div style="width:7px;height:7px;border-radius:50%;background:#238636;"></div>
+            <div style="display:flex;align-items:center;gap:7px;font-size:0.8rem;color:#4b5563;">
+                <div style="width:7px;height:7px;border-radius:50%;background:#16a34a;"></div>
                 Parallel file processing
             </div>
         </div>
@@ -712,7 +593,7 @@ def main():
     # ── Tab 1: Code Input ─────────────────────────────────────
     with tab1:
         st.markdown("""
-        <p style="font-size:0.75rem;color:#6e7681;text-transform:uppercase;letter-spacing:1px;
+        <p style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:1px;
                   font-weight:600;margin:20px 0 16px 0;">Paste Code</p>
         """, unsafe_allow_html=True)
 
@@ -755,8 +636,8 @@ def main():
             if lang and lang != "auto-detect":
                 st.markdown(f"""
                 <span style="font-size:0.72rem;font-weight:600;letter-spacing:0.5px;
-                             color:#8b949e;text-transform:uppercase;
-                             background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);
+                             color:#4b5563;text-transform:uppercase;
+                             background:#f3f4f6;border:1px solid #d1d5db;
                              border-radius:4px;padding:3px 9px;">Detected: {lang}</span>
                 """, unsafe_allow_html=True)
                 st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
@@ -767,7 +648,7 @@ def main():
     # ── Tab 2: File Upload ────────────────────────────────────
     with tab2:
         st.markdown("""
-        <p style="font-size:0.75rem;color:#6e7681;text-transform:uppercase;letter-spacing:1px;
+        <p style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:1px;
                   font-weight:600;margin:20px 0 16px 0;">Upload Source File</p>
         """, unsafe_allow_html=True)
 
@@ -781,21 +662,21 @@ def main():
             size_kb = len(uploaded_file.getvalue()) / 1024
             st.markdown(f"""
             <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;
-                        background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.09);
+                        background:#f9fafb;border:1px solid #e5e7eb;
                         border-radius:8px;margin-bottom:14px;">
-                <div style="width:32px;height:32px;background:rgba(79,70,229,0.15);border-radius:6px;
+                <div style="width:32px;height:32px;background:#e0e7ff;border-radius:6px;
                             display:flex;align-items:center;justify-content:center;flex-shrink:0;">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                         stroke="#a5b4fc" stroke-width="2">
+                         stroke="#4f46e5" stroke-width="2">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                         <polyline points="14 2 14 8 20 8"/>
                     </svg>
                 </div>
                 <div>
-                    <p style="font-size:0.85rem;color:#c9d1d9;margin:0 0 2px 0;font-weight:500;">
+                    <p style="font-size:0.85rem;color:#1f2937;margin:0 0 2px 0;font-weight:500;">
                         {uploaded_file.name}
                     </p>
-                    <p style="font-size:0.75rem;color:#6e7681;margin:0;">{size_kb:.1f} KB</p>
+                    <p style="font-size:0.75rem;color:#6b7280;margin:0;">{size_kb:.1f} KB</p>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -821,7 +702,7 @@ def main():
     # ── Tab 3: GitHub Repo ────────────────────────────────────
     with tab3:
         st.markdown("""
-        <p style="font-size:0.75rem;color:#6e7681;text-transform:uppercase;letter-spacing:1px;
+        <p style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:1px;
                   font-weight:600;margin:20px 0 16px 0;">Repository Analysis</p>
         """, unsafe_allow_html=True)
 
@@ -866,10 +747,10 @@ def main():
             if repo_display:
                 st.markdown(f"""
                 <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;
-                            background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.09);
+                            background:#f9fafb;border:1px solid #e5e7eb;
                             border-radius:8px;margin-bottom:20px;">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                         stroke="#6e7681" stroke-width="2">
+                         stroke="#4b5563" stroke-width="2">
                         <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35
                                  6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1
                                  S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07
@@ -877,7 +758,7 @@ def main():
                                  3.37 0 0 0 9 18.13V22"/>
                     </svg>
                     <span style="font-family:'JetBrains Mono',monospace;font-size:0.82rem;
-                                 color:#8b949e;">{repo_display}</span>
+                                 color:#374151;">{repo_display}</span>
                 </div>
                 """, unsafe_allow_html=True)
             # Q&A Chat Interface (at top)
